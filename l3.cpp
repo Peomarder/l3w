@@ -1,9 +1,3 @@
-deb mirror://mirrors.ubuntu.com/mirrors.txt precise main restricted universe multiverse
-deb mirror://mirrors.ubuntu.com/mirrors.txt precise-updates main restricted universe multiverse
-deb mirror://mirrors.ubuntu.com/mirrors.txt precise-backports main restricted universe multiverse
-deb mirror://mirrors.ubuntu.com/mirrors.txt precise-security main restricted universe multiverse
-
-
 #include <iostream>
 #include <ctime>    // for time()
 //compile with -msse2 -march=native
@@ -272,16 +266,27 @@ int main() {
         std::fill(C, C + n*n, 0.0);
         cout<<"a";
         // Run multiplication
-                dgemm_base(n, A, B, C);
-			cout<<"b";
-         endb = std::chrono::high_resolution_clock::now();
-                dgemm_opt1(n, A, B, C);
-			cout<<"c";
-         end1 = std::chrono::high_resolution_clock::now();
-                
-                dgemm_opt2(n, A, B, C);
-			cout<<"d";
-         end2 = std::chrono::high_resolution_clock::now();
+            dgemm_base(n, A, B, C);
+			endb = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> elapsed = endb - start;
+			cout<<"Completed multiplication with base dgemm algorithm. In "<<elapsed.count() <<". Continue?\n";
+			
+			std::getline(std::cin, input);
+			if(input == "n") break;
+			endb = std::chrono::high_resolution_clock::now();
+            dgemm_opt1(n, A, B, C);
+			end1 = std::chrono::high_resolution_clock::now();
+			elapsed = end1 - endb;
+			cout<<"Completed multiplication with line optimised dgemm algorithm. In "<<elapsed.count() <<". Continue?\n";
+            
+			std::getline(std::cin, input);
+			if(input == "n") break;
+			
+			end1 = std::chrono::high_resolution_clock::now();
+            dgemm_opt2(n, A, B, C);
+			end2 = std::chrono::high_resolution_clock::now();
+			elapsed = end2 - end1;
+			cout<<"Completed multiplication with block optimised dgemm algorithm. In "<<elapsed.count() <<".\n";
            // }
 
 		
@@ -292,21 +297,20 @@ int main() {
        
 		
 		
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = endb - start;
+        // auto end = std::chrono::high_resolution_clock::now();
         
         
-        std::cout << "\nMultiplication completed in " << elapsed.count() << " seconds\n";
+        // std::cout << "\nMultiplication completed in " << elapsed.count() << " seconds\n";
 		
-		elapsed = end1 - endb;
+		// elapsed = end1 - endb;
         
         
-        std::cout << "Multiplication completed in " << elapsed.count() << " seconds\n";
+        // std::cout << "Multiplication completed in " << elapsed.count() << " seconds\n";
 		
-		elapsed = end2 - end1;
+		// elapsed = end2 - end1;
         
         
-        std::cout << "Multiplication completed in " << elapsed.count() << " seconds\n";
+        // std::cout << "Multiplication completed in " << elapsed.count() << " seconds\n";
 		
 		
     }
