@@ -1,0 +1,303 @@
+#include <iostream>
+#include <windows.h>
+#include <psapi.h>
+#include <vector>
+#include <string>
+#include <ctime>
+#include <pdh.h>
+#include <pdhmsg.h>
+#include <stdio.h>
+#include <tlhelp32.h>
+
+#pragma comment(lib, "pdh.lib")
+#pragma comment(lib, "psapi.lib")
+
+// Structure to hold process information
+struct ProcessInfo {
+    DWORD pid;
+    std::string name;
+};
+
+// Function to list all running processes
+std::vector<ProcessInfo> listProcesses() {
+    std::vector<ProcessInfo> processes;
+    HANDLE hProcessSnap;
+    PROCESSENTRY32 pe32;
+
+    // Take a snapshot of all processes in the system
+    hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) {
+        std::cerr << "CreateToolhelp32Snapshot failed with error " << GetLastError() << std::endl;
+        return processes;
+    }
+
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    // Retrieve information about the first process
+    if (!Process32First(hProcessSnap, &pe32)) {
+        std::cerr << "Process32First failed with error " << GetLastError() << std::endl;
+        CloseHandle(hProcessSnap);
+        return processes;
+    }
+
+    // Now walk the snapshot of processes
+    do {
+        ProcessInfo pi;
+        pi.pid = pe32.th32ProcessID;
+        pi.name = pe32.szExeFile;
+        processes.push_back(pi);
+    } while (Process32Next(hProcessSnap, &pe32));
+
+    CloseHandle(hProcessSnap);
+    return processes;
+}
+
+// Function to check if a process is still running
+bool isProcessRunning(DWORD pid) {
+    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (process == NULL) {
+        std::cerr << "Failed to open process with error " << GetLastError() << std::endl;
+        return false;
+    }
+    DWORD ret = WaitForSingleObject(process, 0);
+    CloseHandle(process);
+    return (ret == WAIT_TIMEOUT);
+}
+
+// Enum callback for counter validation
+PDH_STATUS CALLBACK CounterEnumCallback(LPCWSTR szCounter, DWORD_PTR dwUserData) {
+    std::vector<std::wstring>* counters = reinterpret_cast<std::vector<std::wstring>*>(dwUserData);
+    counters->push_back(szCounter);
+    return ERROR_SUCCESS;
+}
+
+// Function to find a valid memory counter for a specific process
+bool findValidCounter(DWORD pid, char* counterPath, size_t bufferSize) {
+    // Try multiple counter types since availability may vary by system
+    const char* counterTemplates[] = {
+        "\\Process(%s)\\Page Faults/sec",
+        "\\Process(%s)\\Cache Faults/sec",
+        "\\Process(%s)\\Page Reads/sec",
+        "\\Process(%s)\\Working Set",
+        "\\Process(%s)\\Private Bytes"
+    };
+    
+    // Get the process name from pid
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (hProcess == NULL) {
+        std::cerr << "Failed to open process with error " << GetLastError() << std::endl;
+        return false;
+    }
+    
+    char processName[MAX_PATH];
+    DWORD size = MAX_PATH;
+    if (QueryFullProcessImageNameA(hProcess, 0, processName, &size) == 0) {
+        CloseHandle(hProcess);
+        std::cerr << "Failed to get process name with error " << GetLastError() << std::endl;
+        return false;
+    }
+    CloseHandle(hProcess);
+    
+    // Extract the process name without path and extension
+    char* filename = strrchr(processName, '\\');
+    if (filename) {
+        filename++; // Skip the backslash
+    } else {
+        filename = processName;
+    }
+    
+    // Remove extension if present
+    char* extension = strrchr(filename, '.');
+    if (extension) {
+        *extension = '\0';
+    }
+    
+    // Try each counter template
+    for (const auto& counterTemplate : counterTemplates) {
+        // Format the counter path
+        sprintf_s(counterPath, bufferSize, counterTemplate, filename);
+        
+        // Validate the counter
+        PDH_HQUERY query;
+        PDH_HCOUNTER counter;
+        PDH_STATUS status;
+        
+        status = PdhOpenQuery(NULL, 0, &query);
+        if (status != ERROR_SUCCESS) {
+            continue;
+        }
+        
+        status = PdhAddCounterA(query, counterPath, 0, &counter);
+        PdhCloseQuery(query);
+        
+        if (status == ERROR_SUCCESS) {
+            std::cout << "Using counter: " << counterPath << std::endl;
+            return true;
+        }
+    }
+    
+    // Try the general Process counter with the actual path name
+    for (const auto& counterTemplate : counterTemplates) {
+        sprintf_s(counterPath, bufferSize, counterTemplate, "_Total");
+        
+        PDH_HQUERY query;
+        PDH_HCOUNTER counter;
+        PDH_STATUS status;
+        
+        status = PdhOpenQuery(NULL, 0, &query);
+        if (status != ERROR_SUCCESS) {
+            continue;
+        }
+        
+        status = PdhAddCounterA(query, counterPath, 0, &counter);
+        PdhCloseQuery(query);
+        
+        if (status == ERROR_SUCCESS) {
+            std::cout << "Using system-wide counter: " << counterPath << std::endl;
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Function to set up hardware performance counters for cache misses
+bool setupPerformanceCounters(PDH_HQUERY& query, PDH_HCOUNTER& counter, DWORD pid) {
+    PDH_STATUS status;
+    char counterPath[PDH_MAX_COUNTER_PATH];
+    
+    // Find a valid counter for this process
+    if (!findValidCounter(pid, counterPath, PDH_MAX_COUNTER_PATH)) {
+        std::cerr << "Could not find a valid performance counter for this process" << std::endl;
+        return false;
+    }
+    
+    // Create a query for performance data
+    status = PdhOpenQuery(NULL, 0, &query);
+    if (status != ERROR_SUCCESS) {
+        std::cerr << "PdhOpenQuery failed with error " << status << std::endl;
+        return false;
+    }
+
+    // Add the counter to the query
+    status = PdhAddCounterA(query, counterPath, 0, &counter);
+    if (status != ERROR_SUCCESS) {
+        std::cerr << "PdhAddCounter failed with error " << status << std::endl;
+        std::cerr << "Counter path: " << counterPath << std::endl;
+        PdhCloseQuery(query);
+        return false;
+    }
+
+    // Initialize the counter
+    status = PdhCollectQueryData(query);
+    if (status != ERROR_SUCCESS) {
+        std::cerr << "Initial PdhCollectQueryData failed with error " << status << std::endl;
+        PdhCloseQuery(query);
+        return false;
+    }
+
+    return true;
+}
+
+// Function to collect cache miss data
+ULONGLONG collectCacheMissData(PDH_HQUERY query, PDH_HCOUNTER counter) {
+    // Collect current values
+    PDH_STATUS status = PdhCollectQueryData(query);
+    if (status != ERROR_SUCCESS) {
+        std::cerr << "PdhCollectQueryData failed with error " << status << std::endl;
+        return 0;
+    }
+
+    // Get the counter value
+    PDH_FMT_COUNTERVALUE counterValue;
+    status = PdhGetFormattedCounterValue(counter, PDH_FMT_LARGE, NULL, &counterValue);
+    if (status != ERROR_SUCCESS) {
+        std::cerr << "PdhGetFormattedCounterValue failed with error " << status << std::endl;
+        return 0;
+    }
+
+    return static_cast<ULONGLONG>(counterValue.largeValue);
+}
+
+int main() {
+    std::cout << "Cache Miss Profiler for Windows 7\n";
+    std::cout << "Listing all running processes...\n\n";
+
+    // Get list of processes
+    std::vector<ProcessInfo> processes = listProcesses();
+
+    // Display processes
+    std::cout << "Available processes:\n";
+    for (size_t i = 0; i < processes.size(); i++) {
+        std::cout << i + 1 << ": " << processes[i].name << " (PID: " << processes[i].pid << ")\n";
+    }
+
+    // Ask user to select a process
+    std::string processName;
+    std::cout << "\nEnter the name of the process to profile (e.g., notepad.exe): ";
+    std::cin >> processName;
+
+    // Find the process
+    DWORD targetPid = 0;
+    for (const auto& proc : processes) {
+        if (_stricmp(proc.name.c_str(), processName.c_str()) == 0) {
+            targetPid = proc.pid;
+            break;
+        }
+    }
+
+    if (targetPid == 0) {
+        std::cerr << "Process not found. Exiting...\n";
+        return 1;
+    }
+
+    std::cout << "Starting profiling for " << processName << " (PID: " << targetPid << ")\n";
+
+    // Set up performance counters
+    PDH_HQUERY query;
+    PDH_HCOUNTER counter;
+    
+    if (!setupPerformanceCounters(query, counter, targetPid)) {
+        std::cerr << "Failed to set up performance counters. Exiting...\n";
+        return 1;
+    }
+
+    // Initialize cache miss count
+    ULONGLONG totalCacheMisses = 0;
+    ULONGLONG previousCacheMisses = 0;
+    
+    // Record start time
+    time_t startTime = time(NULL);
+    
+    std::cout << "Profiling... Press Ctrl+C to stop if the application doesn't exit automatically.\n";
+
+    // Monitor the process until it exits
+    while (isProcessRunning(targetPid)) {
+        // Collect cache miss data
+        ULONGLONG currentCacheMisses = collectCacheMissData(query, counter);
+        
+        // Calculate difference
+        ULONGLONG newMisses = (currentCacheMisses > previousCacheMisses) ? 
+                             (currentCacheMisses - previousCacheMisses) : 0;
+        
+        totalCacheMisses += newMisses;
+        previousCacheMisses = currentCacheMisses;
+        
+        // Wait a bit before checking again to reduce CPU usage
+        Sleep(100);
+    }
+    
+    // Calculate process runtime
+    time_t endTime = time(NULL);
+    double runtime = difftime(endTime, startTime);
+    
+    // Close the query
+    PdhCloseQuery(query);
+    
+    // Display results
+    std::cout << "\nProfiling results for " << processName << ":\n";
+    std::cout << "Runtime: " << runtime << " seconds\n";
+    std::cout << "Total cache misses: " << totalCacheMisses << "\n";
+    
+    return 0;
+}
