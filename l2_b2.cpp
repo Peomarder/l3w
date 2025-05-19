@@ -59,8 +59,9 @@ int main() {
     string input;
 
     while (true) {
+	unsigned int		thread_count = std::thread::hardware_concurrency();
         cout << "\nEnter command (EXIT to quit):\n"
-             << "Format: [SIZE] [BLOCK_SIZE] or THREAD_COUNT (use 'm' for max threads)" << endl
+             << "Format: [SIZE] [BLOCK_SIZE] or "<<thread_count<<" (use 'm' for max threads)" << endl
              << "Example: 1000 64 or 4" << endl
              << "> ";
 
@@ -70,7 +71,8 @@ int main() {
         istringstream iss(input);
         vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}};
 
-        int n, block_size = 0, thread_count = 0;
+        int n, block_size = 0;
+	unsigned int		thread_count = std::thread::hardware_concurrency();
 
         if (tokens.size() < 2) {
             cerr << "Invalid input! Minimum 2 parameters required" << endl;
