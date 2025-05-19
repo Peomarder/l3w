@@ -59,13 +59,9 @@ int main() {
     string input;
 
     while(true) {
-        cout << "
-Enter command (EXIT to quit):
-"
-             "Format: [SIZE] [BLOCK_SIZE] or THREAD_COUNT (use 'm' for max threads)
-"
-             "Example: 1000 64 or 4
-> ";
+        cout << "\nEnter command (EXIT to quit):\n"
+             "Format: [SIZE] [BLOCK_SIZE] or THREAD_COUNT (use 'm' for max threads)\n"
+             "Example: 1000 64 or 4\n> ";
 
         getline(cin, input);
         if (input == "EXIT") break;
@@ -76,8 +72,7 @@ Enter command (EXIT to quit):
         int n, block_size = 0, thread_count = 0;
 
         if (tokens.size() < 2) {
-            cerr << "Invalid input! Minimum 2 parameters required
-";
+            cerr << "Invalid input! Minimum 2 parameters required\n";
             continue;
         }
 
@@ -102,8 +97,7 @@ Enter command (EXIT to quit):
                 thread_count = 4;
             }
         } catch (const exception& e) {
-            cerr << "Error: " << e.what() << "
-";
+            cerr << "Error: " << e.what() << "\n";
             continue;
         }
 
@@ -140,8 +134,7 @@ Enter command (EXIT to quit):
 
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double> elapsed = end - start;
-        cout << "Completed multiplication with multithreaded algorithm in " << elapsed.count() << " seconds.
-";
+        cout << "Completed multiplication with multithreaded algorithm in " << elapsed.count() << " seconds.\n";
 
         delete[] A;
         delete[] B;
