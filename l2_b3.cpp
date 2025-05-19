@@ -8,6 +8,7 @@
 #include <iterator>
 #include <pthread.h>
 #include <stdio.h>
+#include <sys/sysinfo.h>
 
 using namespace std;
 
@@ -61,7 +62,7 @@ int main() {
 
     while (true) {
         int n, block_size = 0, thread_count = 0;
-        thread_count = pthread_num_processors_np(); 
+        thread_count = get_nprocs(); 
         cout << "\nEnter command (EXIT to quit):" << endl
              << "Format: [SIZE] [BLOCK_SIZE] or "<<thread_count<<" (use 'm' for max threads)" << endl
              << "Example: 1000 64 or 4" << endl
@@ -89,7 +90,7 @@ int main() {
             if (tokens.size() > 2) {
                 string third_param = tokens[2];
                 if (third_param == "m" || third_param == "M") {
-                    thread_count = pthread_num_processors_np(); // Retrieve max threads
+                    thread_count = get_nprocs(); // Retrieve max threads
                     cout << "Using maximum threads: " << thread_count << endl;
                 } else {
                     thread_count = stoi(third_param);
