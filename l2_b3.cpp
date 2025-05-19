@@ -60,8 +60,10 @@ int main() {
     string input;
 
     while (true) {
+        int n, block_size = 0, thread_count = 0;
+        thread_count = pthread_num_processors_np(); 
         cout << "\nEnter command (EXIT to quit):" << endl
-             << "Format: [SIZE] [BLOCK_SIZE] or THREAD_COUNT (use 'm' for max threads)" << endl
+             << "Format: [SIZE] [BLOCK_SIZE] or "<<thread_count<<" (use 'm' for max threads)" << endl
              << "Example: 1000 64 or 4" << endl
              << "> ";
 
@@ -71,7 +73,6 @@ int main() {
         istringstream iss(input);
         vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}};
 
-        int n, block_size = 0, thread_count = 0;
 
         if (tokens.size() < 2) {
             cerr << "Invalid input! Minimum 2 parameters required" << endl;
@@ -88,7 +89,7 @@ int main() {
             if (tokens.size() > 2) {
                 string third_param = tokens[2];
                 if (third_param == "m" || third_param == "M") {
-                    thread_count = std::thread::hardware_concurrency(); // Retrieve max threads
+                    thread_count = pthread_num_processors_np(); // Retrieve max threads
                     cout << "Using maximum threads: " << thread_count << endl;
                 } else {
                     thread_count = stoi(third_param);
@@ -128,8 +129,7 @@ int main() {
 
             int create_status = pthread_create(&threads[i], NULL, matrix_multiply, (void*)&thread_data[i]);
             if (create_status) {
-                fprintf(stderr, "Error - pthread_create() return code: %d
-", create_status);
+                fprintf(stderr, "Error - pthread_create() return code: %d\n", create_status);
                 exit(EXIT_FAILURE);
             }
         }
